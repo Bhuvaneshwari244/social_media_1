@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeAlpha Social</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="auth-view">
+        <h1>CodeAlpha Social</h1>
+        <div class="card">
+            <input type="text" id="username" placeholder="Username">
+            <input type="password" id="password" placeholder="Password">
+            <input type="text" id="bio" placeholder="Bio (Optional)">
+            <div class="btn-group">
+                <button onclick="login()">Login</button>
+                <button onclick="register()" class="secondary">Register</button>
+            </div>
+            <p id="auth-msg"></p>
+        </div>
+    </div>
+
+    <div id="app-view" style="display:none;">
+        <header>
+            <h2>Hello, <span id="current-user-display"></span></h2>
+            <button onclick="logout()" class="logout-btn">Logout</button>
+        </header>
+
+        <div class="create-post card">
+            <textarea id="post-content" placeholder="What's on your mind?"></textarea>
+            <button onclick="createPost()">Post Status</button>
+        </div>
+
+        <div id="feed"></div>
+    </div>
+
+    <script>
+        let currentUser = null;
+
+        // API Helper
+        async function api(url, method, body = {}) {
+            const options = { method, headers: { 'Content-Type': 'application/json' } };
+            if (method === 'POST') options.body = JSON.stringify(body);
+            const res = await fetch(url, options);
+            return res.json();
+        }
+
+        async function register() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            const b = document.getElementById('bio').value;
+            const data = await api('/register', 'POST', { username: u, password: p, bio: b });
+            document.getElementById('auth-msg').innerText = data.message;
+        }
+
+        async function login() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            const data = await api('/login', 'POST', { username: u, password: p });
+            if (data.success) {
+                currentUser = data.user;
+                document.getElementById('auth-view').style.display = 'none';
+                document.getElementById('app-view').style.display = 'block';
+                document.getElementById('current-user-display').innerText = currentUser.username;
+                loadPosts();
+            } else {
+                document.getElementById('auth-msg').innerText = data.message;
+            }
+        }
+
+        function logout() {
+            location.reload();
+        }
+
+        async function createPost() {
+            const content = document.getElementById('post-content').value;
+            if(!content) return;
+            await api('/posts', 'POST', { userId: currentUser.id, content });
+            document.getElementById('post-content').value = '';
+            loadPosts();
+        }
+
+        async function loadPosts() {
+            const posts = await fetch('/posts').then(r => r.json());
+            const feed = document.getElementById('feed');
+            feed.innerHTML = '';
+
+            posts.forEach(post => {
+                const div = document.createElement('div');
+                div.className = 'card post';
+                div.innerHTML = `
+                    <h3>${post.authorName}</h3>
+                    <p class="post-content">${post.content}</p>
+                    <div class="actions">
+                        <button onclick="likePost(${post.id})">Like (${post.likes.length})</button>
+                        <button onclick="followUser(${post.userId})" class="secondary">Follow User</button>
+                    </div>
+                    <div class="comments-section">
+                        ${post.comments.map(c => `<div class="comment"><b>${c.username}:</b> ${c.text}</div>`).join('')}
+                        <div class="add-comment">
+                            <input type="text" id="comment-${post.id}" placeholder="Write a comment...">
+                            <button onclick="addComment(${post.id})">Reply</button>
+                        </div>
+                    </div>
+                `;
+                feed.appendChild(div);
+            });
+        }
+
+        async function likePost(id) {
+            await api('/posts/like', 'POST', { postId: id, userId: currentUser.id });
+            loadPosts();
+        }
+
+        async function addComment(id) {
+            const txt = document.getElementById(`comment-${id}`).value;
+            if(!txt) return;
+            await api('/posts/comment', 'POST', { postId: id, userId: currentUser.id, text: txt });
+            loadPosts();
+        }
+
+        async function followUser(id) {
+            if (id === currentUser.id) return alert("You cannot follow yourself.");
+            const res = await api('/follow', 'POST', { followerId: currentUser.id, authorId: id });
+            alert(res.message);
+        }
+    </script>
+</body>
+</html>
